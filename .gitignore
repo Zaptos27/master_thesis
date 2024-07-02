@@ -1,0 +1,10 @@
+.pkl_memoize_py3
+*.npy
+*.perf
+*.out
+*.pkl
+*.pyc
+*.pyo
+*.pyd
+**/__pycache__/
+**/filenames

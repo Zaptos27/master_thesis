@@ -1,0 +1,3 @@
+content.data-type.3d # Contains 3d data.
+content.data-type.tracking # Contains tracking data.
+content.data-type.trajectory # Contains trajectory data.
