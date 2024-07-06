@@ -1,2 +1,2 @@
-model_checkpoint_path: "conv1d_rnn"
-all_model_checkpoint_paths: "conv1d_rnn"
+model_checkpoint_path: "mlp"
+all_model_checkpoint_paths: "mlp"

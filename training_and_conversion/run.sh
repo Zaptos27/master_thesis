@@ -2,7 +2,7 @@
 
 # This script is used to run multiple jobs, for training purposes in sequence
 
-for type in MLP RNN MODELS
+for type in MLP MODELS
 do
     echo "${type}"
     if [[ "${type}" == "MLP" ]]; then

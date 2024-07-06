@@ -1,0 +1,11 @@
+executable              = run_single.sh
+arguments               = $(ClusterId)$(ProcId)
+output                  = run_single.$(ClusterId).$(ProcId).out
+error                   = run_single.$(ClusterId).$(ProcId).err
+log                     = run_single.$(ClusterId).log
+transfer_input_files    = training/training.py 
+when_to_transfer_output = ON_EXIT
+request_GPUs = 1
+request_CPUs = 4
++JobFlavour = "workday" 
+queue

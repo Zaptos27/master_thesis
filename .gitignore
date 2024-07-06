@@ -8,3 +8,10 @@
 *.pyd
 **/__pycache__/
 **/filenames
+.venv
+*.h5
+*.log
+*.csv
+*.json
+*.keras
+*.err

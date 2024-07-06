@@ -10,6 +10,20 @@ import argparse
 # import lossFunctions
 import learningRates
 from os.path import splitext
+from packaging.version import Version
+import tensorflow_datasets as tfds
+import time
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
+from particle_data import particle_data_dataset_builder 
+
+if Version(tf.__version__) > Version("2.16.0"): 
+    version = True
+else: 
+    version = False
+
+path = '/afs/cern.ch/user/m/mimodekj/public/master_thesis'
+data_dir = "/eos/user/m/mimodekj/tensorflow_datasets"
 
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -82,7 +96,10 @@ class ModelImporter():
 
         
 tf.keras.backend.clear_session()
-
+print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+# Start time
+start = time.time()
+print("Start time: ", start)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--windowSize", type=int, default=3, help="window size of algorithm")
@@ -112,22 +129,20 @@ elif args.dtype == "float8":
 else:
     raise ValueError("dtype not recognized")
 
-inputs_train = np.load("/mnt/HDD/data/0_input.npy")
-targets_train = np.load("/mnt/HDD/data/0_target.npy")
-inputs_val = np.load("/mnt/HDD/data/1_input.npy")
-targets_val = np.load("/mnt/HDD/data/1_target.npy")
+train_dataset = tfds.load('particle_data', data_dir=data_dir, split='train', as_supervised=True).batch(args.batch)
+val_dataset = tfds.load('particle_data', data_dir=data_dir, split='val', as_supervised=True).batch(args.batch)
 
-n_inputFeatures = inputs_train.shape[-1]
-n_outputFeatures = targets_train.shape[-1]
+n_inputFeatures = 3#,inputs_train.shape[-1]
+n_outputFeatures = 3#targets_train.shape[-1]
 
-train_dataset = tf.data.Dataset.from_tensor_slices((inputs_train, targets_train)).batch(args.batch)
-val_dataset = tf.data.Dataset.from_tensor_slices((inputs_val, targets_val)).batch(args.batch)
+#train_dataset = tf.data.Dataset.from_tensor_slices((inputs_train, targets_train)).batch(args.batch)
+#val_dataset = tf.data.Dataset.from_tensor_slices((inputs_val, targets_val)).batch(args.batch)
 
 
 print("creating model:", args.modelName)
 
 if args.retrain:
-    model = tf.keras.models.load_model('/home/zaptos/Code/Master/models/tensorflow/{}'.format(args.modelName))
+    model = tf.keras.models.load_model(path+'/models/tensorflow/{}'.format(args.modelName))
     print("loaded pre-trained model")
 
 else:
@@ -139,6 +154,9 @@ checkpoint_filepath = 'checkpoints/' + args.modelName
 os.system("mkdir -vp "+checkpoint_filepath)
 
 if (args.retrain): model.load_weights(checkpoint_filepath)
+
+if version:
+    checkpoint_filepath = checkpoint_filepath + '/model.weights.h5'
 
 if args.forceAllEpochs:
     patience = args.epochs
@@ -171,9 +189,13 @@ model.load_weights(checkpoint_filepath)
 # save the best model only
 from shutil import rmtree
 modelPath = "../models/tensorflow/" +args.modelName
-if os.path.exists(modelPath): rmtree(modelPath)
+if version:
+    modelPath = modelPath + ".h5"
+    if os.path.exists(modelPath): os.remove(modelPath)
+else:
+    if os.path.exists(modelPath): rmtree(modelPath)
 
-saveDir = "../models/tensorflow/"
+#saveDir = "../models/tensorflow/"
 tf.keras.models.save_model(model, modelPath, include_optimizer=False)
 
 # print("python -m tf2onnx.convert --saved-model " +saveDir+ args.modelName+ " --output "+saveDir+"model.onnx")
@@ -185,4 +207,9 @@ with open("loss_info/"+args.modelName + ".pkl", "wb") as f:
     pickle.dump(training_history, f)
 
 print("Training complete")
+
+# End time
+end = time.time()
+print("End time: ", end)
+print("Time taken: ", end-start)
 
