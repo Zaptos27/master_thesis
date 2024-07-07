@@ -22,7 +22,7 @@ if Version(tf.__version__) > Version("2.16.0"):
 else: 
     version = False
 
-path = '/afs/cern.ch/user/m/mimodekj/public/master_thesis'
+path = '/eos/user/m/mimodekj/master_thesis'
 data_dir = "/eos/user/m/mimodekj/tensorflow_datasets"
 
 
