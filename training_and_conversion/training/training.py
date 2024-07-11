@@ -14,8 +14,6 @@ from packaging.version import Version
 import tensorflow_datasets as tfds
 import time
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
-from particle_data import particle_data_dataset_builder 
 
 if Version(tf.__version__) > Version("2.16.0"): 
     version = True
