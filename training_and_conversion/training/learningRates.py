@@ -19,6 +19,14 @@ class CustomSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
 
     return tf.math.rsqrt(self.d_model) * tf.math.minimum(arg1, arg2)
 
+  def get_config(self):
+    config = {
+    'd_model': self.d_model,
+    'warmup_steps': self.warmup_steps,
+    }
+    
+    return config
+
 class OCP(tf.keras.optimizers.schedules.LearningRateSchedule):
   def __init__(self, warmup_steps=4000, lr_min=1e-4, lr_max=5e-2 ):
     super(OCP, self).__init__()

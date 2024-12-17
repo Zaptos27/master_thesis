@@ -1,0 +1,11 @@
+executable              = conversion.sh
+arguments               = $(ClusterId) $(ProcId)
+output                  = conversion.$(ClusterId).$(ProcId).out
+error                   = conversion.$(ClusterId).$(ProcId).err
+log                     = conversion.$(ClusterId).log
+transfer_input_files    = convert2onnx.py,models,checkpoints
+should_transfer_files = YES
+when_to_transfer_output = ON_EXIT
+request_CPUs = 20
++JobFlavour = "longlunch"  
+queue 

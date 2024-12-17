@@ -11,18 +11,22 @@ import argparse
 import learningRates
 from os.path import splitext
 from packaging.version import Version
-import tensorflow_datasets as tfds
 import time
+import tf2onnx
+import onnx
+from onnxconverter_common import float16
 
+ 
 
-if Version(tf.__version__) > Version("2.16.0"): 
-    version = True
+if Version(tf.__version__) >= Version("2.16.0"): 
+    keras_version = True
 else: 
-    version = False
+    keras_version = False
 
-path = '/eos/user/m/mimodekj/master_thesis'
-data_dir = "/eos/user/m/mimodekj/tensorflow_datasets"
-
+path = '/afs/cern.ch/user/m/mimodekj/master_thesis'
+data_dir = "/eos/user/m/mimodekj/data"
+print(path)
+print(data_dir)
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
@@ -38,6 +42,7 @@ class ModelImporter():
             if modelName == "mlp": self.model = MLP.mlp(windowSize, n_outputFeatures, dtype=dtype)
             elif modelName == "mlp_wide": self.model = MLP.mlp_wide(windowSize, n_outputFeatures, dtype=dtype)
             elif modelName == "mlp_deep": self.model = MLP.mlp_deep(windowSize, n_outputFeatures, dtype=dtype)
+            elif modelName == "mlp_big": self.model = MLP.mlp_big(windowSize, n_outputFeatures, dtype=dtype)
         elif("rnn" in modelType.lower()):
             from models_tf import RNN
             if modelName == "rnn": self.model = RNN.rnn(windowSize, n_inputFeatures, n_outputFeatures)
@@ -64,6 +69,7 @@ class ModelImporter():
             elif modelName == "separable_conv2d_deep": self.model = models.separable_conv2d_deep(windowSize, n_outputFeatures, dtype=dtype)
             elif modelName == "separable_conv2d_wide": self.model = models.separable_conv2d_wide(windowSize, n_outputFeatures, dtype=dtype)
             elif modelName == "mlp_piecewise": self.model = models.mlp_piecewise(windowSize, n_outputFeatures, dtype=dtype)
+            elif modelName == "mlp_piecewise2": self.model = models.mlp_piecewise2(windowSize, n_outputFeatures, dtype=dtype)
             elif modelName == "mlp_piecewise_deep": self.model = models.mlp_piecewise_deep(windowSize, n_outputFeatures, dtype=dtype)
             elif modelName == "mlp_piecewise_wide": self.model = models.mlp_piecewise_wide(windowSize, n_outputFeatures, dtype=dtype)
             elif modelName == "mlp_piecewise_deep_wide": self.model = models.mlp_piecewise_deep_wide(windowSize, n_outputFeatures, dtype=dtype)
@@ -90,17 +96,15 @@ class ModelImporter():
             elif modelName == "conv1d_rnn": self.model = models.conv1d_rnn(windowSize, n_outputFeatures, dtype=dtype)
             elif modelName == "conv1d_rnn_deep": self.model = models.conv1d_rnn_deep(windowSize, n_outputFeatures, dtype=dtype)
             elif modelName == "conv1d_rnn_wide": self.model = models.conv1d_rnn_wide(windowSize, n_outputFeatures, dtype=dtype)
-
+            elif modelName == "mlp_small": self.model = models.mlp_small(windowSize, n_outputFeatures, dtype=dtype)
+            
 
         
 tf.keras.backend.clear_session()
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
-# Start time
-start = time.time()
-print("Start time: ", start)
+
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--windowSize", type=int, default=3, help="window size of algorithm")
 parser.add_argument("--epochs", type=int, default=100, help="number of epochs to train for")
 parser.add_argument("--batch", type=int, default=2048, help="batch size")
 parser.add_argument("--retrain", action='store_true', help="retrain an already existing model")
@@ -109,6 +113,10 @@ parser.add_argument("--nTracks", type=int, required=False, default=-1, help="for
 parser.add_argument("--dtype", type=str, default="float32", help="data type for training")
 parser.add_argument("--modelName", type=str, default="mlp", required=True, help="Name of the trained model")
 parser.add_argument("--modelType", type=str, default="MLP",)
+parser.add_argument("--steps", type=int, default=-1,)
+parser.add_argument("--cluster", type=str, default="",)
+parser.add_argument("--version", type=str, default="0.0.0", help="Dataset version")
+parser.add_argument("--old_cluster", type=str, default="",)
 
 #subparsers = parser.add_subparsers()
 #bits = subparsers.add_parser('bits', help='number off bits for quantized network')
@@ -124,11 +132,67 @@ elif args.dtype == "float16":
     dtype = tf.float16
 elif args.dtype == "float8":
     dtype = tf.float8
+elif args.dtype == "int16":
+    dtype = tf.uint16
 else:
     raise ValueError("dtype not recognized")
 
-train_dataset = tfds.load('particle_data', data_dir=data_dir, split='train', as_supervised=True).batch(args.batch)
-val_dataset = tfds.load('particle_data', data_dir=data_dir, split='val', as_supervised=True).batch(args.batch)
+
+class TimeEpochCallback(tf.keras.callbacks.Callback):
+    def on_epoch_begin(self, epoch, logs=None):
+        self.epoch_start_time = time.time()
+    
+    def on_epoch_end(self, epoch, logs=None):
+        epoch_end_time = time.time()
+        epoch_duration = epoch_end_time - self.epoch_start_time
+        print(f" Epoch {epoch + 1} took {epoch_duration:.2f} seconds")
+
+
+if args.version[2] == "1":
+    windowsize = 4
+else:
+    windowsize = 3
+
+time_callback = TimeEpochCallback()
+if args.version[0] != "0":
+    import tensorflow_datasets as tfds
+    train_dataset = tfds.load(f'particle_data:{args.version}', data_dir=data_dir, split='train', as_supervised=True, shuffle_files=True)
+    val_dataset = tfds.load(f'particle_data:{args.version}', data_dir=data_dir, split='val', as_supervised=True, shuffle_files=True)
+
+    train_dataset = train_dataset.repeat(args.epochs).shuffle(buffer_size=50_000,reshuffle_each_iteration=False)
+    val_dataset = val_dataset.repeat(args.epochs).shuffle(buffer_size=50_000,reshuffle_each_iteration=False).take(args.batch*args.steps//10)
+
+
+    train_dataset = train_dataset.batch(args.batch).prefetch(tf.data.experimental.AUTOTUNE)
+    val_dataset = val_dataset.batch(args.batch).prefetch(tf.data.experimental.AUTOTUNE)
+else:
+    if args.version[-1] == "1":
+        train_dataset = ([np.load(f"{data_dir}/train_data_{windowsize}_backwards/train_input.npy"),
+                                                            np.load(f"{data_dir}/train_data_{windowsize}_backwards/train_id.npy")],
+                                                            np.load(f"{data_dir}/train_data_{windowsize}_backwards/train_target.npy"))
+        
+
+        val_dataset = ([np.load(f"{data_dir}/val_data_{windowsize}_backwards/val_input.npy"),
+                                                        np.load(f"{data_dir}/val_data_{windowsize}_backwards/val_id.npy")],
+                                                        np.load(f"{data_dir}/val_data_{windowsize}_backwards/val_target.npy"))
+        
+    else:
+        train_dataset = ([np.load(f"{data_dir}/train_data_{windowsize}/train_input.npy"), 
+                                                            np.load(f"{data_dir}/train_data_{windowsize}/train_id.npy")],
+                                                            np.load(f"{data_dir}/train_data_{windowsize}/train_target.npy"))
+        
+
+        val_dataset = ([np.load(f"{data_dir}/val_data_{windowsize}/val_input.npy"),
+                                                        np.load(f"{data_dir}/val_data_{windowsize}/val_id.npy")], 
+                                                        np.load(f"{data_dir}/val_data_{windowsize}/val_target.npy"))
+        
+if "small" in args.modelName:
+    train_dataset = (train_dataset[0][0], train_dataset[1])
+    val_dataset = (val_dataset[0][0], val_dataset[1])
+    
+print("Data Loaded")
+
+print(*train_dataset)
 
 n_inputFeatures = 3#,inputs_train.shape[-1]
 n_outputFeatures = 3#targets_train.shape[-1]
@@ -140,31 +204,53 @@ n_outputFeatures = 3#targets_train.shape[-1]
 print("creating model:", args.modelName)
 
 if args.retrain:
-    model = tf.keras.models.load_model(path+'/models/tensorflow/{}'.format(args.modelName))
+    model = tf.keras.models.load_model(f'models/tensorflow/{args.modelName}_{args.version}_{args.old_cluster}')
     print("loaded pre-trained model")
 
 else:
-    modelImporter = ModelImporter(args.modelType, args.modelName, args.windowSize, n_inputFeatures, n_outputFeatures)
+    modelImporter = ModelImporter(args.modelType, args.modelName, windowsize, n_inputFeatures, n_outputFeatures)
     model = modelImporter.model
     print("model: ", model)
 
-checkpoint_filepath = 'checkpoints/' + args.modelName
+checkpoint_filepath = 'checkpoints/' + args.modelName + args.cluster
 os.system("mkdir -vp "+checkpoint_filepath)
 
-if (args.retrain): model.load_weights(checkpoint_filepath)
-
-if version:
+if (args.retrain):
+    checkpoint_filepath = 'checkpoints/' + args.modelName + args.old_cluster+'/'+args.modelName + args.old_cluster
+    os.system("mkdir -vp "+checkpoint_filepath) 
+    model.load_weights(checkpoint_filepath)
+checkpoint_filepath = 'checkpoints/' + args.modelName + args.cluster +'/'+args.modelName + args.cluster
+    
+if keras_version:
     checkpoint_filepath = checkpoint_filepath + '/model.weights.h5'
 
 if args.forceAllEpochs:
     patience = args.epochs
 else:
     patience = 50
-callbacks = [tf.keras.callbacks.ModelCheckpoint(checkpoint_filepath, monitor='loss', verbose=0, save_best_only=True, save_weights_only=True),
-			tf.keras.callbacks.EarlyStopping(monitor='loss', patience=patience)]
+callbacks = [tf.keras.callbacks.ModelCheckpoint(checkpoint_filepath, monitor='loss', verbose=1, save_best_only=True, save_weights_only=True),
+			tf.keras.callbacks.EarlyStopping(monitor='loss', patience=patience), time_callback]
 
 training_history = {"loss":[], "val_loss":[]}
 
+
+loss='mse'
+optimizer = tf.keras.optimizers.Adam(0.01, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
+model.compile(optimizer=optimizer, loss=loss)
+if args.version[0] == "0":
+    if args.steps != -1:
+        history = model.fit(*train_dataset, epochs=30, steps_per_epoch=args.steps, validation_data=val_dataset, callbacks=callbacks, batch_size = args.batch, verbose = 0)
+    else:
+        history = model.fit(*train_dataset, epochs=30, validation_data=val_dataset, callbacks=callbacks, batch_size = args.batch, verbose = 0)
+else:
+    if args.steps != -1:
+        history = model.fit(train_dataset, epochs=30, steps_per_epoch=args.steps, validation_data=val_dataset, callbacks=callbacks, verbose = 0)
+    else:
+        history = model.fit(train_dataset, epochs=30, validation_data=val_dataset, callbacks=callbacks, verbose = 0)
+
+
+training_history['loss'] += history.history['loss']
+training_history["val_loss"] += history.history['val_loss']
 
 warmup_steps =  args.batch * args.epochs // 5 # 1/5 of the training batches will be warmup steps
 learning_rate = learningRates.CustomSchedule(64.0, warmup_steps)
@@ -173,9 +259,16 @@ optimizer = tf.keras.optimizers.Adam(learning_rate, beta_1=0.9, beta_2=0.98, eps
 loss='mse'
 model.compile(optimizer=optimizer, loss=loss)
 
-
-history = model.fit(train_dataset, epochs=args.epochs, validation_data=val_dataset, callbacks=callbacks)
-
+if args.version[0] == "0":
+    if args.steps != -1:
+        history = model.fit(*train_dataset, epochs=args.epochs, steps_per_epoch=args.steps, validation_data=val_dataset, callbacks=callbacks, batch_size = args.batch, verbose = 0)
+    else:
+        history = model.fit(*train_dataset, epochs=args.epochs, validation_data=val_dataset, callbacks=callbacks, batch_size = args.batch, verbose = 0)
+else:
+    if args.steps != -1:
+        history = model.fit(train_dataset, epochs=args.epochs, steps_per_epoch=args.steps, validation_data=val_dataset, callbacks=callbacks, verbose = 0)
+    else:
+        history = model.fit(train_dataset, epochs=args.epochs, validation_data=val_dataset, callbacks=callbacks, verbose = 0)
 
 
 print(model.summary())
@@ -186,9 +279,9 @@ model.load_weights(checkpoint_filepath)
 
 # save the best model only
 from shutil import rmtree
-modelPath = "../models/tensorflow/" +args.modelName
-if version:
-    modelPath = modelPath + ".h5"
+modelPath = f"models/tensorflow/{args.modelName}_{args.version}_{args.cluster}"
+if keras_version:
+    modelPath = modelPath + ".keras"
     if os.path.exists(modelPath): os.remove(modelPath)
 else:
     if os.path.exists(modelPath): rmtree(modelPath)
@@ -196,18 +289,16 @@ else:
 #saveDir = "../models/tensorflow/"
 tf.keras.models.save_model(model, modelPath, include_optimizer=False)
 
-# print("python -m tf2onnx.convert --saved-model " +saveDir+ args.modelName+ " --output "+saveDir+"model.onnx")
-# os.system("python -m tf2onnx.convert --saved-model "+saveDir + args.modelName + " --output "+saveDir+args.modelName+".onnx")
+tf2onnx.convert.from_keras(model, output_path=f"models/onnx/{args.modelName}_{args.version}_{args.cluster}.onnx")
+
+model = onnx.load(f"models/onnx/{args.modelName}_{args.version}_{args.cluster}.onnx")
+model_fp16 = float16.convert_float_to_float16(model)
+onnx.save(model_fp16, f"models/onnx/{args.modelName}_{args.version}_fp16_{args.cluster}.onnx")
 
 #save training info to plot later
 os.system("mkdir -vp loss_info/")
-with open("loss_info/"+args.modelName + ".pkl", "wb") as f:
+with open(f"loss_info/{args.modelName}{args.cluster}.pkl", "wb") as f: #Removed "loss_info/" +
     pickle.dump(training_history, f)
 
 print("Training complete")
-
-# End time
-end = time.time()
-print("End time: ", end)
-print("Time taken: ", end-start)
 
