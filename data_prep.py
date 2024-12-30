@@ -112,7 +112,7 @@ for j, file in tqdm.tqdm(enumerate(l)):
                 continue
             
             
-            if len(indices) <= window_size:
+            if len(indices) < window_size:
                 continue
             
             
