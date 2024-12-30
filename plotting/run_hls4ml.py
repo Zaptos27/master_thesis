@@ -66,7 +66,7 @@ hls_model = hls4ml.converters.convert_from_keras_model(model, hls_config=config,
 hls_model.compile()
 hls_model.build(csim=False)
 if "small" in model_name:
-    y = hls_model.predict(X_test.reshape((-1, *model.input_shape[1:]))).reshape(-1,3)
+    y = hls_model.predict(X_test.reshape((-1, *model.input_shape[1:])))
 else:
     y = hls_model.predict([X_test.reshape((-1, *model.input_shape[0][1:])), X_id])
 print(model_name, version, ":   " ,np.std(y[:,0]*1015 - y_test[:,0]*1015),"  ", np.std(y[:,1]*1015 - y_test[:,1]*1015),"  " ,np.std(y[:,2]*3000 - y_test[:,2]*3000))

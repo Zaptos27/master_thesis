@@ -7,7 +7,7 @@ conda activate /eos/user/m/mimodekj/env/conda2
 
 python3 -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"  
 
-networks=(mlp mlp_wide mlp_deep mlp_big conv1d conv2d depthwise_conv1d lstm mlp_conv mlp_deep_wide mlp_piecewise mlp_repeat separable_conv1d separable_conv2d mlp_piecewise2)
+networks=(mlp mlp_wide mlp_deep mlp_big conv1d conv2d depthwise_conv1d lstm mlp_conv mlp_deep_wide mlp_piecewise mlp_repeat separable_conv1d separable_conv2d mlp_piecewise2 mlp_small)
 
 if [ $2 -lt 4 ]
 then
