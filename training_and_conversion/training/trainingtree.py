@@ -92,15 +92,15 @@ X1_test = pd.concat([X1_test,XID_test],axis=1)
 X2_test = pd.concat([X2_test,XID_test],axis=1)
 
 for tree_type in ['gbdt']:
-    #tuned0 = LGBMTuner(metric = 'mse', device_type = 'gpu', trials = trails, verbosity = 1, visualization = False, custom_metric = {"boosting": tree_type})
-    #tuned0.grid['num_leaves']['high'] = 2000
-    #tuned0.grid['lambda_l1']['high'] = 100
-    #tuned0.grid['lambda_l2']['high'] = 100
-    #tuned0.fit(X0, y0)
-    #tuned0.fit_optimized(X0_total, _y[:,0])
-    #pickle.dump(tuned0, open(f"tuned0_{tree_type}_{version}.pkl", "wb"))
+    tuned0 = LGBMTuner(metric = 'mse', device_type = 'gpu', trials = trails, verbosity = 1, visualization = False, custom_metric = {"boosting": tree_type})
+    tuned0.grid['num_leaves']['high'] = 2000
+    tuned0.grid['lambda_l1']['high'] = 100
+    tuned0.grid['lambda_l2']['high'] = 100
+    tuned0.fit(X0, y0)
+    tuned0.fit_optimized(X0_total, _y[:,0])
+    pickle.dump(tuned0, open(f"tuned0_{tree_type}_{version}.pkl", "wb"))
 
-    #np.save(f"tuned0_predict_{tree_type}_{version}",tuned0.predict(X0_test))
+    np.save(f"tuned0_predict_{tree_type}_{version}",tuned0.predict(X0_test))
 
     tuned01 = LGBMTuner(metric = 'mse', device_type = 'gpu', trials = trails, verbosity = 1, visualization = False, custom_metric = {"boosting": tree_type})
     tuned01.grid['num_leaves']['high'] = 2000
